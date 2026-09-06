@@ -113,9 +113,12 @@ function playerCard(p) {
   const mk = p.markets.map(m => {
     let nums, pill;
     if (m.book != null) {
-      nums = `<b>${m.proj}</b><span class="vs">vs</span><span class="bk">${m.book}</span>`;
-      if (m.call === "OVER") pill = `<span class="pill over">Over ${m.edge > 0 ? "+" + m.edge : m.edge}</span>`;
-      else if (m.call === "UNDER") pill = `<span class="pill under">Under ${m.edge}</span>`;
+      const price = (m.over_am || m.under_am)
+        ? `<span class="odds">${esc(m.over_am || "")}/${esc(m.under_am || "")}</span>` : "";
+      nums = `<b>${m.proj}</b><span class="vs">vs</span><span class="bk">${m.book}</span>${price}`;
+      const ev = m.ev != null && m.ev > 0 ? ` +${m.ev}%` : "";
+      if (m.call === "OVER") pill = `<span class="pill over" title="EV at the posted over price">Over${ev}</span>`;
+      else if (m.call === "UNDER") pill = `<span class="pill under" title="EV at the posted under price">Under${ev}</span>`;
       else pill = `<span class="pill none">fair</span>`;
     } else {
       nums = `<b>${m.proj}</b> <span class="noline">· no line</span>`;
