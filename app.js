@@ -121,8 +121,11 @@ function playerCard(p) {
         ? `<span class="pov" title="our modelled chance of going OVER the line — drives the call, not the mean">${m.pover}%&#8593;</span>` : "";
       nums = `<b>${m.proj}</b><span class="vs">vs</span><span class="bk">${m.book}</span>${price}${pov}`;
       const ev = m.ev != null && m.ev > 0 ? ` +${m.ev}%` : "";
-      if (m.call === "OVER") pill = `<span class="pill over" title="EV at the posted over price">Over${ev}</span>`;
-      else if (m.call === "UNDER") pill = `<span class="pill under" title="EV at the posted under price">Under${ev}</span>`;
+      const side = m.call === "OVER" ? "over" : "under";
+      const skew = m.skew
+        ? `<span class="skew" title="Skewed line: the mean sits at the line, but the distribution leans ${side} — most outcomes fall on the ${side}, so the call follows the %&#8593; probability, not the mean.">skew</span>` : "";
+      if (m.call === "OVER") pill = `${skew}<span class="pill over" title="EV at the posted over price">Over${ev}</span>`;
+      else if (m.call === "UNDER") pill = `${skew}<span class="pill under" title="EV at the posted under price">Under${ev}</span>`;
       else pill = `<span class="pill none">fair</span>`;
     } else {
       nums = `<b>${m.proj}</b> <span class="noline">· no line</span>`;
