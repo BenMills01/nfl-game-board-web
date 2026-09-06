@@ -87,7 +87,9 @@ async function game(gid) {
     <div class="chips"><span class="chip">${esc(g.kickoff)}</span><span class="chip"><b>${esc(g.fav)}</b> −${Math.abs(g.spread).toFixed(1)}</span>
       <span class="chip">O/U <b>${g.total.toFixed(1)}</b></span>${g.roof ? `<span class="chip">${esc(g.roof)}</span>` : ""}</div></div>`;
 
-  let proj = `<div class="seclabel">Projections vs the Book</div>`;
+  let proj = `<div class="seclabel">Projections vs the Book</div>`
+    + `<p class="note" style="margin:-4px 0 14px">Row reads: <b>our mean</b> vs <b>book line</b> · two-way price · <b>%&#8593;</b> = our chance of going <b>over</b>. `
+    + `The call follows that probability, not the mean — for skewed stats (rushing especially) the mean can sit at the line while most outcomes fall under it.</p>`;
   let tdboard = `<div class="seclabel">Anytime Touchdown — Fair vs Book</div><div class="tdgrid">`;
   for (const tb of g.teams) {
     proj += `<div class="teamhdr" style="--tc:${tb.col}">${esc(tb.team)}</div><div class="pcards">`;
@@ -115,7 +117,9 @@ function playerCard(p) {
     if (m.book != null) {
       const price = (m.over_am || m.under_am)
         ? `<span class="odds">${esc(m.over_am || "")}/${esc(m.under_am || "")}</span>` : "";
-      nums = `<b>${m.proj}</b><span class="vs">vs</span><span class="bk">${m.book}</span>${price}`;
+      const pov = m.pover != null
+        ? `<span class="pov" title="our modelled chance of going OVER the line — drives the call, not the mean">${m.pover}%&#8593;</span>` : "";
+      nums = `<b>${m.proj}</b><span class="vs">vs</span><span class="bk">${m.book}</span>${price}${pov}`;
       const ev = m.ev != null && m.ev > 0 ? ` +${m.ev}%` : "";
       if (m.call === "OVER") pill = `<span class="pill over" title="EV at the posted over price">Over${ev}</span>`;
       else if (m.call === "UNDER") pill = `<span class="pill under" title="EV at the posted under price">Under${ev}</span>`;
