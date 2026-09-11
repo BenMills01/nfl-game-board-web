@@ -119,6 +119,34 @@ h1,h2,h3,h4{font-family:'Oswald',system-ui,sans-serif;text-transform:uppercase;
   color:var(--tc);margin:26px 0 12px;display:flex;align-items:center;gap:10px}
 .teamhdr:before{content:"";width:10px;height:22px;background:var(--tc);border-radius:2px}
 
+/* ---------- bet builders page ---------- */
+.ykhdr{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:.12em;font-size:13px;
+  font-weight:600;color:var(--gold);margin:16px 0 8px;border-left:3px solid var(--gold);padding-left:10px}
+.bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin-bottom:8px}
+.bcard{background:linear-gradient(160deg,#141d28,#0d141c);border:1px solid var(--line);border-radius:12px;
+  overflow:hidden;padding:0 0 11px}
+.bcard:before{content:"";display:block;height:4px;background:linear-gradient(90deg,var(--ca) 0%,transparent 40% 60%,var(--cb) 100%)}
+.bmatch{font-family:'Saira Condensed',sans-serif;font-weight:800;font-size:19px;letter-spacing:.02em;
+  padding:11px 15px 9px;cursor:pointer;display:flex;align-items:center;gap:7px;border-bottom:1px solid var(--line-soft)}
+.bmatch .bat{color:#4a5a6c;font-size:14px}
+.bmatch .bview{margin-left:auto;font-family:'Oswald',sans-serif;font-weight:500;font-size:10px;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.bopt{display:flex;align-items:flex-start;gap:8px;padding:8px 15px 0}
+.blab{font-family:'Oswald',sans-serif;font-weight:700;font-size:12px;color:var(--accent);flex:none;
+  width:16px;padding-top:2px}
+.blegs{flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;font-family:'Newsreader',serif;font-size:13.5px;color:var(--ink)}
+.bplus{color:#4a5a6c;font-weight:600}
+.bleg .bpl{color:var(--headline)}
+.bleg .bcall{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600}
+.bleg .bcall.over{color:var(--green)}
+.bleg .bcall.under{color:var(--red)}
+.bleg .bmk{color:var(--muted);font-size:12px}
+.bpct{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--steel)}
+.bprice{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--gold);flex:none;padding-top:1px}
+.banchor{margin:9px 15px 0;padding-top:8px;border-top:1px solid var(--line-soft);
+  font-family:'Newsreader',serif;font-size:12.5px;color:var(--steel)}
+.banchor b{color:var(--headline);font-weight:500}
+
 /* ---------- injury tool ---------- */
 .injbar{font-family:'Newsreader',serif;font-size:13.5px;line-height:1.5;color:var(--steel);
   background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:9px 13px;margin:6px 0 0}

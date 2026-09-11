@@ -23,6 +23,7 @@ function topbar() {
     <div class="spacer"></div>
     <div class="navbtn" onclick="go('')">Games</div>
     <div class="navbtn" onclick="go('teams')">Teams</div>
+    <div class="navbtn" onclick="go('builders')">Builders</div>
   </div></div>`;
 }
 function go(hash) { location.hash = hash ? "#/" + hash : "#/"; }
@@ -309,6 +310,41 @@ function paintTeam(scroll) {
   if (scroll) window.scrollTo(0, 0);
 }
 
+/* ---------------- bet builders ---------------- */
+function bLeg(l) {
+  const c = l.call === "OVER" ? "over" : "under";
+  return `<span class="bleg"><span class="bpl">${esc(l.player)}</span> <span class="bcall ${c}">${l.call === "OVER" ? "O" : "U"} ${l.line}</span> <span class="bmk">${esc(l.market.toLowerCase())}</span> <span class="bpct">${l.pct}%</span></span>`;
+}
+function bOpt(label, legs, price) {
+  if (!legs) return "";
+  return `<div class="bopt"><span class="blab">${label}</span><div class="blegs">${legs.map(bLeg).join('<span class="bplus">+</span>')}</div><span class="bprice">~${price}</span></div>`;
+}
+function builderCard(g) {
+  const anch = g.anchor ? `<div class="banchor">⚓ to ~3/1: <b>${esc(g.anchor.player)}</b> ${esc(g.anchor.txt)} <span class="bpct">${g.anchor.pct}%</span></div>` : "";
+  return `<div class="bcard" style="--ca:${g.away_col};--cb:${g.home_col}">
+    <div class="bmatch" onclick="go('g/${g.gid}')"><b style="color:${g.away_col}">${esc(g.away)}</b> <span class="bat">@</span> <b style="color:${g.home_col}">${esc(g.home)}</b> <span class="bview">view game →</span></div>
+    ${bOpt("A", g.A, g.priceA)}${bOpt("B", g.B, g.priceB)}${anch}</div>`;
+}
+async function builders() {
+  const b = await getJSON("data/builders.json");
+  let html = `<div class="pagehead"><h1>Bet Builders</h1><span class="sub">Week ${b.week} · 2 options per game</span></div>`
+    + `<p class="note" style="margin:0 0 6px">Over-preferred (unders only when very clear), drawn from the model's reliable zones. <b>%</b> = our modelled hit chance for that leg. The 2-leg price (<b>~X</b> dec) reaches ~3/1 with the anchor. Each 🅨 groups 4 games into a <b>Yankee</b> (11 bets).</p>`
+    + `<p class="note" style="margin:0 0 16px;color:var(--red)">Always verify prices + player availability at the book — the roster feed can lag IRs, and same-game correlation shifts the true price.</p>`;
+  let yk = 0;
+  for (const s of b.slates) {
+    html += `<div class="daylabel">${esc(s.time)}</div>`;
+    for (let i = 0; i < s.games.length; i += 4) {
+      const chunk = s.games.slice(i, i + 4);
+      const full = chunk.length === 4;
+      if (full) yk++;
+      html += `<div class="ykhdr">${full ? `🅨 Yankee ${yk}` : `${chunk.length} game${chunk.length === 1 ? "" : "s"} — not a full Yankee`}</div>`;
+      html += `<div class="bgrid">${chunk.map(builderCard).join("")}</div>`;
+    }
+  }
+  render(`${topbar()}<div class="wrap">${html}</div>`);
+  window.scrollTo(0, 0);
+}
+
 /* ---------------- router ---------------- */
 function render(html) { app.innerHTML = (html.startsWith("<div class=\"topbar") ? "" : topbar()) + html; }
 async function route() {
@@ -317,6 +353,7 @@ async function route() {
   if (parts[0] === "g" && parts[1]) return game(parts[1]);
   if (parts[0] === "t" && parts[1]) return team(parts[1]);
   if (parts[0] === "teams") return teams();
+  if (parts[0] === "builders") return builders();
   return home();
 }
 window.addEventListener("hashchange", route);
