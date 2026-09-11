@@ -128,19 +128,21 @@ function computeTeams(g, outSet) {
   }
   return teams;
 }
-const getOut = gid => { try { return new Set(JSON.parse(localStorage.getItem("inj:" + gid) || "[]")); } catch (e) { return new Set(); } };
-const saveOut = (gid, s) => { try { localStorage.setItem("inj:" + gid, JSON.stringify([...s])); } catch (e) {} };
-let CUR = { gid: null, g: null };
+let CUR = { type: null, id: null, data: null };
+const outKey = () => `inj:${CUR.type}:${CUR.id}`;
+const getOut = () => { try { return new Set(JSON.parse(localStorage.getItem(outKey()) || "[]")); } catch (e) { return new Set(); } };
+const saveOut = s => { try { localStorage.setItem(outKey(), JSON.stringify([...s])); } catch (e) {} };
+const repaint = () => CUR.type === "game" ? paintGame(false) : paintTeam(false);
+function toggleOut(name) { const s = getOut(); s.has(name) ? s.delete(name) : s.add(name); saveOut(s); const y = window.scrollY; repaint(); window.scrollTo(0, y); }
+window.clearOut = function () { saveOut(new Set()); const y = window.scrollY; repaint(); window.scrollTo(0, y); };
 async function game(gid) {
   let g;
   try { g = await getJSON(`data/game/${gid}.json`); } catch (e) { render(`<div class="wrap"><div class="empty">Game not found.</div></div>`); return; }
-  CUR = { gid, g }; paintGame(true);
+  CUR = { type: "game", id: gid, data: g }; paintGame(true);
 }
-function toggleOut(name) { const s = getOut(CUR.gid); s.has(name) ? s.delete(name) : s.add(name); saveOut(CUR.gid, s); const y = window.scrollY; paintGame(false); window.scrollTo(0, y); }
-window.clearOut = function () { saveOut(CUR.gid, new Set()); const y = window.scrollY; paintGame(false); window.scrollTo(0, y); };
 
 function paintGame(scroll) {
-  const g = CUR.g, outSet = getOut(CUR.gid), teams = computeTeams(g, outSet);
+  const g = CUR.data, outSet = getOut(), teams = computeTeams(g, outSet);
   const favA = g.spread < 0, favH = g.spread > 0;
   const hero = `<div class="hero" style="--ca:${g.away_col};--cb:${g.home_col}">
     <div class="eye">Week ${g.week} · Projected Final</div>
@@ -226,34 +228,69 @@ async function teams() {
   window.scrollTo(0, 0);
 }
 
-/* ---------------- team view ---------------- */
+/* ---------------- team view (with injury tool) ---------------- */
+const TMK = {
+  QB: [["Comp", "completions"], ["Att", "attempts"], ["Pass Yds", "pass_yards"], ["Pass TD", "pass_td"], ["INT", "interceptions"], ["Rush Yds", "rush_yards"]],
+  RB: [["Rush Att", "rush_att"], ["Rush Yds", "rush_yards"], ["Tgt", "targets"], ["Rec", "receptions"], ["Rec Yds", "rec_yards"]],
+  WR: [["Tgt", "targets"], ["Rec", "receptions"], ["Rec Yds", "rec_yards"], ["Rec TD", "rec_td"]],
+  TE: [["Tgt", "targets"], ["Rec", "receptions"], ["Rec Yds", "rec_yards"], ["Rec TD", "rec_td"]],
+};
+function redistributeTeam(players, outSet) {
+  for (const [pos, vol, deps] of [[["WR", "TE", "RB"], "targets", ["targets", "receptions", "rec_yards"]], [["RB"], "rush_att", ["rush_att", "rush_yards"]]]) {
+    const pool = players.filter(p => pos.includes(p.pos));
+    const vac = pool.filter(p => outSet.has(p.name)).reduce((s, p) => s + (p.d[vol] || 0), 0);
+    const avail = pool.filter(p => !outSet.has(p.name));
+    const base = avail.reduce((s, p) => s + (p.d[vol] || 0), 0);
+    if (vac > 0 && base > 0) { const f = (base + vac) / base; for (const p of avail) for (const s of deps) if (p.d[s] != null) p.d[s] *= f; }
+  }
+  for (const p of players) if (outSet.has(p.name)) for (const s in p.d) p.d[s] = 0;
+}
+function computeDepth(t, outSet) {
+  const dc = {}, all = [], r2 = v => Math.round(v * 100) / 100;
+  for (const pos of ["QB", "RB", "WR", "TE"]) {
+    if (!t.depth[pos]) continue;
+    dc[pos] = t.depth[pos].map(p => ({ ...p, pos, d: { ...(p.d || {}) }, out: outSet.has(p.name), td: p.td }));
+    for (const p of dc[pos]) all.push(p);
+  }
+  redistributeTeam(all, outSet);
+  for (const pos in dc) for (const p of dc[pos]) {
+    p.props2 = TMK[pos].filter(([, s]) => p.d[s] != null).map(([l, s]) => [l, r2(p.d[s])]);
+    if (p.out) p.td = 0;
+  }
+  return dc;
+}
 async function team(abbr) {
   let t;
   try { t = await getJSON(`data/team/${abbr}.json`); } catch (e) { render(`<div class="wrap"><div class="empty">Team not found.</div></div>`); return; }
-  const tc = t.col;
+  CUR = { type: "team", id: abbr, data: t }; paintTeam(true);
+}
+function paintTeam(scroll) {
+  const t = CUR.data, tc = t.col, outSet = getOut(), dc = computeDepth(t, outSet);
   const hero = `<div class="hero dossier-hero" style="--ca:${tc};--cb:${tc}">
     <div class="eye">Team Dossier</div><div class="big" style="color:${tc}">${esc(t.team)}</div>
     <div class="chips"><span class="chip">OFF <b style="color:${tc}">${esc(t.identity)}</b></span>
       <span class="chip">DEF <b style="color:${tc}">${esc(t.funnel)}</b></span>
       <span class="chip">${Math.round(t.plays_pg)} plays/gm</span>
       <span class="chip">aDOT <b style="color:${tc}">${t.adot}</b></span></div></div>`;
-
+  const outArr = [...outSet];
+  const injbar = `<div class="injbar">🩹 <b>Injury tool</b> — tick a player to mark him <b>OUT</b>; his touches redistribute across the depth chart.`
+    + (outArr.length ? ` <span class="injout">OUT: ${outArr.map(esc).join(", ")}</span> <span class="injclear" onclick="clearOut()">clear all</span>` : "") + `</div>`;
   const POSNAME = { QB: "Quarterbacks", RB: "Running Backs", WR: "Wide Receivers", TE: "Tight Ends" };
-  let depth = `<div class="seclabel team" style="--tc:${tc}">Depth Chart &amp; Player Props</div>`;
+  let depth = `<div class="seclabel team" style="--tc:${tc}">Depth Chart &amp; Player Props</div>${injbar}`;
   for (const pos of ["QB", "RB", "WR", "TE"]) {
-    const arr = t.depth[pos]; if (!arr) continue;
+    const arr = dc[pos]; if (!arr) continue;
     depth += `<div class="teamhdr" style="--tc:${tc}">${POSNAME[pos]}</div><div class="pcards">`;
     for (const p of arr) {
-      const stats = Object.entries(p.props).filter(([, v]) => v != null)
-        .map(([k, v]) => `<span class="stat"><span class="k">${k}</span><span class="v">${v}</span></span>`).join("");
+      const box = `<span class="injbox ${p.out ? "on" : ""}" data-inj="${escAttr(p.name)}" title="mark OUT / back in">${p.out ? "✕" : ""}</span>`;
       const mark = p.starter ? `<span class="star">★</span>` : `<span class="diamond">◆</span>`;
-      depth += `<div class="pcard"><div class="ph"><span class="slot">${esc(p.slot)}</span>
+      if (p.out) { depth += `<div class="pcard out"><div class="ph">${box}<span class="slot">${esc(p.slot)}</span><span class="pn">${esc(p.name)}</span><span class="outtag">OUT</span></div></div>`; continue; }
+      const stats = p.props2.filter(([, v]) => v != null).map(([k, v]) => `<span class="stat"><span class="k">${k}</span><span class="v">${v}</span></span>`).join("");
+      depth += `<div class="pcard"><div class="ph">${box}<span class="slot">${esc(p.slot)}</span>
         <span class="pn">${esc(p.name)}</span>${mark}<div class="tdbadge">TD <b>${p.td}%</b></div></div>
         <div class="statline">${stats}</div></div>`;
     }
     depth += `</div>`;
   }
-
   let sched = `<div class="seclabel team" style="--tc:${tc}">2026 Schedule</div><div class="sched">`;
   for (const s of t.schedule) {
     const res = s.win == null ? "" : `<span class="res ${s.win ? "W" : "L"}">${s.win ? "W" : "L"}</span>`;
@@ -263,14 +300,13 @@ async function team(abbr) {
       <div class="pr">${line}</div></div>`;
   }
   sched += `</div>`;
-
   render(`${topbar()}<div class="wrap">
     <div class="back" onclick="go('teams')">← all teams</div>
     ${hero}
     <div class="seclabel team" style="--tc:${tc}">The Team Report</div>
     <div class="report" style="--tc:${tc}">${t.report_html}</div>
     ${depth}${sched}</div>`);
-  window.scrollTo(0, 0);
+  if (scroll) window.scrollTo(0, 0);
 }
 
 /* ---------------- router ---------------- */
