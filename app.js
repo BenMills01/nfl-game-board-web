@@ -24,6 +24,7 @@ function topbar() {
     <div class="navbtn" onclick="go('')">Games</div>
     <div class="navbtn" onclick="go('teams')">Teams</div>
     <div class="navbtn" onclick="go('builders')">Builders</div>
+    <div class="navbtn" onclick="go('td')">TD Sheet</div>
   </div></div>`;
 }
 function go(hash) { location.hash = hash ? "#/" + hash : "#/"; }
@@ -313,7 +314,8 @@ function paintTeam(scroll) {
 /* ---------------- bet builders ---------------- */
 function bLeg(l) {
   const c = l.call === "OVER" ? "over" : "under";
-  return `<span class="bleg"><span class="bpl">${esc(l.player)}</span> <span class="bcall ${c}">${l.call === "OVER" ? "O" : "U"} ${l.line}</span> <span class="bmk">${esc(l.market.toLowerCase())}</span> <span class="bpct">${l.pct}%</span></span>`;
+  const flag = l.standout ? ` <span class="bstandout" title="Standout value — beats every over in this game on model edge, surfaced despite the over-lean">▼ VALUE</span>` : "";
+  return `<span class="bleg"><span class="bpl">${esc(l.player)}</span> <span class="bcall ${c}">${l.call === "OVER" ? "O" : "U"} ${l.line}</span> <span class="bmk">${esc(l.market.toLowerCase())}</span> <span class="bpct">${l.pct}%</span>${flag}</span>`;
 }
 function bOpt(label, legs, price) {
   if (!legs) return "";
@@ -327,8 +329,8 @@ function builderCard(g) {
 }
 async function builders() {
   const b = await getJSON("data/builders.json");
-  let html = `<div class="pagehead"><h1>Bet Builders</h1><span class="sub">Week ${b.week} · 2 options per game</span></div>`
-    + `<p class="note" style="margin:0 0 6px">Over-preferred (unders only when very clear), drawn from the model's reliable zones. <b>%</b> = our modelled hit chance for that leg. The 2-leg price (<b>~X</b> dec) reaches ~3/1 with the anchor. Each 🅨 groups 4 games into a <b>Yankee</b> (11 bets).</p>`
+  let html = `<div class="pagehead"><h1>Bet Builders</h1><span class="sub">Week ${b.week} · up to 2 options per game</span></div>`
+    + `<p class="note" style="margin:0 0 6px">Legs ranked on <b>pure model edge</b>; the count flexes to reach ~3/1 without diluting quality. <b>%</b> = our modelled hit chance. Overs float up for watchability, but a <span class="bstandout">▼ VALUE</span> under means it beat every over in that game on edge — shown, not culled. The leg price (<b>~X</b> dec) reaches ~3/1 with the anchor. Each 🅨 groups 4 games into a <b>Yankee</b> (11 bets).</p>`
     + `<p class="note" style="margin:0 0 16px;color:var(--red)">Always verify prices + player availability at the book — the roster feed can lag IRs, and same-game correlation shifts the true price.</p>`;
   let yk = 0;
   for (const s of b.slates) {
@@ -345,6 +347,45 @@ async function builders() {
   window.scrollTo(0, 0);
 }
 
+/* ---------------- anytime-TD accumulator sheet ---------------- */
+function tdTag(t) {
+  const lab = { value: "VALUE", banker: "BANKER", balanced: "BALANCED" }[t] || t.toUpperCase();
+  return `<span class="tdtag ${t}">${lab}</span>`;
+}
+function tdPickRow(p, cls) {
+  const edge = p.edge > 0 ? `<span class="tdedge pos">+${p.edge}pp</span>`
+    : `<span class="tdedge neg">${p.edge}pp</span>`;
+  return `<div class="tdpick ${cls}">
+      <span class="tdplayer"><b>${esc(p.player)}</b> <span class="tdpos">${esc(p.pos)}</span></span>
+      <span class="tdmeta"><span class="tdprob">${p.pct}%</span> <span class="tdodds">${esc(p.frac)}</span> ${edge} ${tdTag(p.tag)}</span>
+    </div>`;
+}
+function tdLegCard(l) {
+  const alts = l.alts && l.alts.length
+    ? `<details class="tdalts"><summary>alternatives</summary>${l.alts.map(a => tdPickRow(a, "alt")).join("")}</details>`
+    : "";
+  return `<div class="tdcard" style="--ca:${l.away_col};--cb:${l.home_col}">
+      <div class="tdmatch" onclick="go('g/${l.gid}')"><b style="color:${l.away_col}">${esc(l.away)}</b> <span class="bat">@</span> <b style="color:${l.home_col}">${esc(l.home)}</b> <span class="bview">view game →</span></div>
+      ${tdPickRow(l.pick, "main")}${alts}</div>`;
+}
+async function tdsheet() {
+  const t = await getJSON("data/tdsheet.json");
+  let html = `<div class="pagehead"><h1>Anytime TD Sheet</h1><span class="sub">Week ${t.week} · best scorer per game</span></div>`
+    + `<p class="note" style="margin:0 0 6px">One anytime-TD pick per game, ranked by a <b>likelihood × value</b> blend — a decent-chance scorer the book has priced generously, not blind chalk. <b>%</b> = our modelled chance he scores; <b>+pp</b> = our edge vs the book's implied price. Each kickoff block is one straight acca.</p>`
+    + `<p class="note" style="margin:0 0 16px;color:var(--red)">These accas are lottery tickets by nature — verify prices + availability at bet365 before staking, and swap in an <i>alternative</i> if you fancy it.</p>`;
+  if (!t.slates.length) html += `<p class="note">No upcoming multi-game slates to build from right now.</p>`;
+  for (const s of t.slates) {
+    const evtag = s.model_pct >= s.book_pct
+      ? `<span class="tdedge pos">model ${s.model_pct}% vs book ${s.book_pct}%</span>`
+      : `<span class="tdedge neg">model ${s.model_pct}% vs book ${s.book_pct}%</span>`;
+    html += `<div class="daylabel">${esc(s.time)}</div>`
+      + `<div class="tdaccahdr"><span class="tdfold">${s.fold}-fold</span> <span class="tdprice">~${s.acca_frac} <span class="tddec">(${s.acca_dec})</span></span> ${evtag}</div>`
+      + `<div class="tdgrid">${s.legs.map(tdLegCard).join("")}</div>`;
+  }
+  render(`${topbar()}<div class="wrap">${html}</div>`);
+  window.scrollTo(0, 0);
+}
+
 /* ---------------- router ---------------- */
 function render(html) { app.innerHTML = (html.startsWith("<div class=\"topbar") ? "" : topbar()) + html; }
 async function route() {
@@ -354,6 +395,7 @@ async function route() {
   if (parts[0] === "t" && parts[1]) return team(parts[1]);
   if (parts[0] === "teams") return teams();
   if (parts[0] === "builders") return builders();
+  if (parts[0] === "td") return tdsheet();
   return home();
 }
 window.addEventListener("hashchange", route);
