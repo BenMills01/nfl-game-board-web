@@ -73,45 +73,108 @@ function gameCard(g) {
 }
 
 /* ---------------- game view ---------------- */
+/* ---------------- injury tool: client-side redistribute + recompute ---------------- */
+const MK = {
+  QB: [["Pass yards", "pass_yards"], ["Pass TDs", "pass_td"]],
+  RB: [["Rush yards", "rush_yards"], ["Carries", "rush_att"], ["Rec yards", "rec_yards"], ["Receptions", "receptions"]],
+  WR: [["Rec yards", "rec_yards"], ["Receptions", "receptions"], ["Targets", "targets"]],
+  TE: [["Rec yards", "rec_yards"], ["Receptions", "receptions"], ["Targets", "targets"]],
+};
+const LV = [.10, .25, .50, .75, .90];
+const escAttr = s => String(s).replace(/[&"'<>]/g, c => ({ "&": "&amp;", '"': "&quot;", "'": "&#39;", "<": "&lt;", ">": "&gt;" }[c]));
+function interp(x, xs, ys) {
+  const n = xs.length; if (x <= xs[0]) return ys[0]; if (x >= xs[n - 1]) return ys[n - 1];
+  for (let i = 1; i < n; i++) if (x <= xs[i]) { const t = (x - xs[i - 1]) / (xs[i] - xs[i - 1]); return ys[i - 1] + t * (ys[i] - ys[i - 1]); }
+  return ys[n - 1];
+}
+const qAt = (e, l) => e.q ? interp(l, LV, e.q) : e.m;
+const pOver = e => (!e.q || e.line == null) ? null : Math.min(1, Math.max(0, 1 - interp(e.line, e.q, LV)));
+const decToAm = d => (!d || d <= 1) ? null : (d >= 2 ? "+" + Math.round((d - 1) * 100) : "−" + Math.round(100 / (d - 1)));
+function propVal(e) {
+  const po = pOver(e); if (po == null) return { call: null, ev: null, po: null };
+  const od = e.od || 1.909, ud = e.ud || 1.909, th = 0.04, eo = po * od - 1, eu = (1 - po) * ud - 1;
+  if (eo >= th && eo >= eu) return { call: "OVER", ev: eo, po };
+  if (eu >= th && eu > eo) return { call: "UNDER", ev: eu, po };
+  return { call: "none", ev: Math.max(eo, eu), po };
+}
+const r1 = x => Math.round(x * 10) / 10;
+function buildMkt(lbl, e) {
+  const m = { label: lbl, proj: r1(e.m), book: e.line, over_th: r1(qAt(e, 0.45)), under_th: r1(qAt(e, 0.55)),
+    over_am: null, under_am: null, pover: null, call: null, ev: null, skew: false };
+  if (e.line != null) {
+    const r = propVal(e); m.call = r.call; m.ev = r.ev != null ? r1(r.ev * 100) : null;
+    m.pover = r.po != null ? Math.round(r.po * 100) : null; m.over_am = decToAm(e.od); m.under_am = decToAm(e.ud);
+    const gap = e.m - e.line, dis = (m.call === "UNDER" && gap > 0) || (m.call === "OVER" && gap < 0), near = Math.abs(gap) <= 0.03 * e.line;
+    m.skew = (m.call === "OVER" || m.call === "UNDER") && m.pover != null && (dis || (near && Math.abs(m.pover - 50) >= 5));
+  }
+  return m;
+}
+function redistribute(players, outSet) {
+  for (const [pos, vol, deps] of [[["WR", "TE", "RB"], "targets", ["targets", "receptions", "rec_yards"]], [["RB"], "rush_att", ["rush_att", "rush_yards"]]]) {
+    const pool = players.filter(p => pos.includes(p.pos));
+    const vac = pool.filter(p => outSet.has(p.name)).reduce((s, p) => s + ((p.d[vol] && p.d[vol].m) || 0), 0);
+    const avail = pool.filter(p => !outSet.has(p.name));
+    const base = avail.reduce((s, p) => s + ((p.d[vol] && p.d[vol].m) || 0), 0);
+    if (vac > 0 && base > 0) { const f = (base + vac) / base; for (const p of avail) for (const s of deps) { const e = p.d[s]; if (e) { e.m *= f; if (e.q) e.q = e.q.map(x => x * f); } } }
+  }
+  for (const p of players) if (outSet.has(p.name)) { for (const s in p.d) { p.d[s].m = 0; if (p.d[s].q) p.d[s].q = p.d[s].q.map(() => 0); } if (p.td) p.td.pct = 0; }
+}
+function computeTeams(g, outSet) {
+  const teams = g.teams.map(tb => ({ team: tb.team, col: tb.col, players: tb.players.map(p => ({ name: p.name, pos: p.pos, starter: p.starter, minor: p.minor, td: p.td ? { ...p.td } : null, d: JSON.parse(JSON.stringify(p.d || {})) })) }));
+  for (const tb of teams) redistribute(tb.players, outSet);
+  for (const tb of teams) for (const p of tb.players) {
+    p.markets = (MK[p.pos] || []).map(([l, s]) => (p.d[s] && p.d[s].m > 0.3) ? buildMkt(l, p.d[s]) : null).filter(Boolean);
+    p.out = outSet.has(p.name);
+  }
+  return teams;
+}
+const getOut = gid => { try { return new Set(JSON.parse(localStorage.getItem("inj:" + gid) || "[]")); } catch (e) { return new Set(); } };
+const saveOut = (gid, s) => { try { localStorage.setItem("inj:" + gid, JSON.stringify([...s])); } catch (e) {} };
+let CUR = { gid: null, g: null };
 async function game(gid) {
   let g;
   try { g = await getJSON(`data/game/${gid}.json`); } catch (e) { render(`<div class="wrap"><div class="empty">Game not found.</div></div>`); return; }
+  CUR = { gid, g }; paintGame(true);
+}
+function toggleOut(name) { const s = getOut(CUR.gid); s.has(name) ? s.delete(name) : s.add(name); saveOut(CUR.gid, s); const y = window.scrollY; paintGame(false); window.scrollTo(0, y); }
+window.clearOut = function () { saveOut(CUR.gid, new Set()); const y = window.scrollY; paintGame(false); window.scrollTo(0, y); };
+
+function paintGame(scroll) {
+  const g = CUR.g, outSet = getOut(CUR.gid), teams = computeTeams(g, outSet);
   const favA = g.spread < 0, favH = g.spread > 0;
   const hero = `<div class="hero" style="--ca:${g.away_col};--cb:${g.home_col}">
     <div class="eye">Week ${g.week} · Projected Final</div>
     <div class="score">
       <div class="tm ${favA ? "fav" : ""}"><div class="pt" style="color:${g.away_col}">${g.apts}</div><div class="ab" style="color:${g.away_col}">${esc(g.away)}</div></div>
       <div class="at">AT</div>
-      <div class="tm ${favH ? "fav" : ""}"><div class="pt" style="color:${g.home_col}">${g.hpts}</div><div class="ab" style="color:${g.home_col}">${esc(g.home)}</div></div>
-    </div>
+      <div class="tm ${favH ? "fav" : ""}"><div class="pt" style="color:${g.home_col}">${g.hpts}</div><div class="ab" style="color:${g.home_col}">${esc(g.home)}</div></div></div>
     <div class="chips"><span class="chip">${esc(g.kickoff)}</span><span class="chip"><b>${esc(g.fav)}</b> −${Math.abs(g.spread).toFixed(1)}</span>
       <span class="chip">O/U <b>${g.total.toFixed(1)}</b></span>${g.roof ? `<span class="chip">${esc(g.roof)}</span>` : ""}</div></div>`;
-
-  let proj = `<div class="seclabel">Projections vs the Book</div>`
-    + `<p class="note" style="margin:-4px 0 14px">Row reads: <b>our mean</b> vs <b>book line</b> · two-way price · <b>%&#8593;</b> = our chance of going <b>over</b>. `
-    + `The call follows that probability, not the mean — for skewed stats (rushing especially) the mean can sit at the line while most outcomes fall under it.</p>`;
+  const outArr = [...outSet];
+  const injbar = `<div class="injbar">🩹 <b>Injury tool</b> — tick a player to mark him <b>OUT</b>; his targets/carries redistribute to teammates and every call recomputes live.`
+    + (outArr.length ? ` <span class="injout">OUT: ${outArr.map(esc).join(", ")}</span> <span class="injclear" onclick="clearOut()">clear all</span>` : "") + `</div>`;
+  let proj = `<div class="seclabel">Projections vs the Book</div>` + injbar
+    + `<p class="note" style="margin:8px 0 14px">Row reads: <b>our mean</b> vs <b>book line</b> · price · <b>%&#8593;</b> = our chance of going <b>over</b> (drives the call, not the mean).</p>`;
   let tdboard = `<div class="seclabel">Anytime Touchdown — Fair vs Book</div><div class="tdgrid">`;
-  for (const tb of g.teams) {
+  for (const tb of teams) {
     proj += `<div class="teamhdr" style="--tc:${tb.col}">${esc(tb.team)}</div><div class="pcards">`;
     for (const p of tb.players) proj += playerCard(p);
     proj += `</div>`;
-    for (const p of tb.players) if (p.td) tdboard += tdCard(p, tb.team);
+    for (const p of tb.players) if (p.td && !p.out && p.td.pct) tdboard += tdCard(p, tb.team);
   }
   tdboard += `</div>`;
-
-  render(`${topbar()}<div class="wrap">
-    <div class="back" onclick="go('')">← back to the slate</div>
-    ${hero}
-    <div class="seclabel">The Match Report</div>
-    <div class="report">${g.report_html}</div>
-    ${proj}
-    ${tdboard}
-    <p class="note">Book = live consensus line across books. Calls assume ≈ −110. TD props are noisy — treat as a lean and shop the longest price.</p>
-  </div>`);
-  window.scrollTo(0, 0);
+  render(`${topbar()}<div class="wrap"><div class="back" onclick="go('')">← back to the slate</div>${hero}
+    <div class="seclabel">The Match Report</div><div class="report">${g.report_html}</div>${proj}${tdboard}
+    <p class="note">Book = live consensus line across books. Calls assume ≈ −110. TD props are noisy — treat as a lean.</p></div>`);
+  if (scroll) window.scrollTo(0, 0);
 }
 
 function playerCard(p) {
+  const box = `<span class="injbox ${p.out ? "on" : ""}" data-inj="${escAttr(p.name)}" title="mark OUT / back in">${p.out ? "✕" : ""}</span>`;
+  const mark = p.starter ? `<span class="star">★</span>` : `<span class="diamond">◆</span>`;
+  if (p.out) {
+    return `<div class="pcard out"><div class="ph">${box}<span class="slot">${esc(p.pos)}</span><span class="pn">${esc(p.name)}</span><span class="outtag">OUT — redistributed</span></div></div>`;
+  }
   const mk = p.markets.map(m => {
     let nums, pill;
     if (m.book != null) {
@@ -123,7 +186,7 @@ function playerCard(p) {
       const ev = m.ev != null && m.ev > 0 ? ` +${m.ev}%` : "";
       const side = m.call === "OVER" ? "over" : "under";
       const skew = m.skew
-        ? `<span class="skew" title="Skewed line: the mean sits at the line, but the distribution leans ${side} — most outcomes fall on the ${side}, so the call follows the %&#8593; probability, not the mean.">skew</span>` : "";
+        ? `<span class="skew" title="Skewed line: the mean sits at the line, but the distribution leans ${side} — the call follows the %&#8593; probability, not the mean.">skew</span>` : "";
       if (m.call === "OVER") pill = `${skew}<span class="pill over" title="EV at the posted over price">Over${ev}</span>`;
       else if (m.call === "UNDER") pill = `${skew}<span class="pill under" title="EV at the posted under price">Under${ev}</span>`;
       else pill = `<span class="pill none">fair</span>`;
@@ -133,12 +196,11 @@ function playerCard(p) {
     }
     return `<div class="mkt"><span class="lbl">${esc(m.label)}</span><span class="nums">${nums}</span>${pill}</div>`;
   }).join("");
-  const td = p.td
+  const td = p.td && p.td.pct
     ? `<div class="tdbadge">TD <b>${p.td.pct}%</b><br>${p.td.book ? `${esc(p.td.book)} ${p.td.value ? '<span class="val">●</span>' : ""}` : `fair ${esc(p.td.fair)}`}</div>`
     : "";
-  const mark = p.starter ? `<span class="star">★</span>` : `<span class="diamond">◆</span>`;
   return `<div class="pcard ${p.minor ? "minor" : ""}">
-    <div class="ph"><span class="slot">${esc(p.pos)}</span><span class="pn">${esc(p.name)}</span>${mark}${td}</div>
+    <div class="ph">${box}<span class="slot">${esc(p.pos)}</span><span class="pn">${esc(p.name)}</span>${mark}${td}</div>
     ${mk}</div>`;
 }
 function tdCard(p, team) {
@@ -222,4 +284,6 @@ async function route() {
   return home();
 }
 window.addEventListener("hashchange", route);
+// injury-tool checkboxes (delegated, survives re-renders)
+app.addEventListener("click", e => { const el = e.target.closest(".injbox"); if (el) { e.stopPropagation(); toggleOut(el.getAttribute("data-inj")); } });
 route();

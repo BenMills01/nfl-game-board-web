@@ -119,6 +119,22 @@ h1,h2,h3,h4{font-family:'Oswald',system-ui,sans-serif;text-transform:uppercase;
   color:var(--tc);margin:26px 0 12px;display:flex;align-items:center;gap:10px}
 .teamhdr:before{content:"";width:10px;height:22px;background:var(--tc);border-radius:2px}
 
+/* ---------- injury tool ---------- */
+.injbar{font-family:'Newsreader',serif;font-size:13.5px;line-height:1.5;color:var(--steel);
+  background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:9px 13px;margin:6px 0 0}
+.injbar b{color:var(--headline);font-weight:500}
+.injout{color:var(--red);font-family:'IBM Plex Mono',monospace;font-size:11.5px}
+.injclear{color:var(--accent);cursor:pointer;text-decoration:underline;margin-left:8px;font-size:12px}
+.injbox{width:16px;height:16px;flex:none;border:1.5px solid var(--line);border-radius:4px;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:var(--red);
+  background:var(--panel-2);transition:.1s}
+.injbox:hover{border-color:var(--red)}
+.injbox.on{background:rgba(255,87,101,.2);border-color:var(--red)}
+.pcard.out{opacity:.5}
+.pcard.out .pn{text-decoration:line-through}
+.outtag{margin-left:auto;font-family:'Oswald',sans-serif;font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--red)}
+
 /* ---------- player card ---------- */
 .pcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .pcard{background:linear-gradient(160deg,#141c26,#0f151d);border:1px solid var(--line);border-radius:12px;
